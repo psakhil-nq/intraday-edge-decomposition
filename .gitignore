@@ -1,0 +1,21 @@
+# Licensed Databento market data
+data/
+*.csv
+
+# Allow derived roll-gap tables
+!NQ-roll-gap-table.csv
+!ES-roll-gap-table.csv
+
+# Credentials
+.env
+*.env
+*api_key*
+*apikey*
+*.key
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+.pytest_cache/
