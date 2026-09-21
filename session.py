@@ -1,6 +1,12 @@
 import pandas as pd 
-
-SESSION_TZ = "America/New_York"
+from config import (
+    SESSION_TZ,SESSION_START,
+    ASIA_START, ASIA_END,
+    LONDON_START, LONDON_END,
+    NY_AM_START, NY_AM_END,
+    NY_LUNCH_START, NY_LUNCH_END,
+    NY_PM_START, NY_PM_END
+)
 
 def add_et_timestamp(data):
     data = data.copy()
@@ -11,7 +17,7 @@ def add_et_timestamp(data):
 def add_session_date(data):
     data = data.copy()
     local_time = data["ts_et"].dt.time
-    after_18 = local_time >= pd.to_datetime("18:00:00").time()
+    after_18 = local_time >= pd.to_datetime(SESSION_START).time()
     data["session_date"] = data["ts_et"].dt.date
     data.loc[after_18, "session_date"] = (
     data.loc[after_18, "ts_et"] + pd.Timedelta(days=1)
@@ -23,24 +29,24 @@ def add_session_label(data):
     data = data.copy()
     local_time = data["ts_et"].dt.time
     asia = (
-        (local_time >= pd.to_datetime("20:00:00").time()) |
-        (local_time < pd.to_datetime("00:00:00").time())
+        (local_time >= pd.to_datetime(ASIA_START).time()) |
+        (local_time < pd.to_datetime(ASIA_END).time())
     )
     london = (
-        (local_time >= pd.to_datetime("02:00:00").time()) &
-        (local_time < pd.to_datetime("05:00:00").time())
+        (local_time >= pd.to_datetime(LONDON_START).time()) &
+        (local_time < pd.to_datetime(LONDON_END).time())
     )
     ny_am = (
-        (local_time >= pd.to_datetime("09:30:00").time()) &
-        (local_time < pd.to_datetime("11:00:00").time())
+        (local_time >= pd.to_datetime(NY_AM_START).time()) &
+        (local_time < pd.to_datetime(NY_AM_END).time())
     )
     ny_lunch = (
-        (local_time >= pd.to_datetime("12:00:00").time()) &
-        (local_time < pd.to_datetime("13:00:00").time())
+        (local_time >= pd.to_datetime(NY_LUNCH_START).time()) &
+        (local_time < pd.to_datetime(NY_LUNCH_END).time())
     )
     ny_pm = (
-        (local_time >= pd.to_datetime("13:30:00").time()) &
-        (local_time < pd.to_datetime("16:00:00").time())
+        (local_time >= pd.to_datetime(NY_PM_START).time()) &
+        (local_time < pd.to_datetime(NY_PM_END).time())
     )
     data["session_label"] = "Off"
     data.loc[asia, "session_label"] = "Asia"
