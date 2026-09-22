@@ -100,56 +100,6 @@ print(
     .head(10)
 )
 
-
-# --------------------------------------------------
-# 5. Consecutive missing-minute gaps
-# --------------------------------------------------
-
-result = result.sort_values(
-    ["session_date", "session_label", "ts_et"]
-)
-
-result["minute_diff"] = (
-    result
-    .groupby(["session_date", "session_label"])["ts_et"]
-    .diff()
-    .dt.total_seconds()
-    .div(60)
-)
-
-result["missing_minutes"] = result["minute_diff"] - 1
-
-
-longest_gaps = (
-    result
-    .groupby(["session_date", "session_label"])["missing_minutes"]
-    .max()
-    .fillna(0)
-    .reset_index()
-)
-
-
-print("\nWorst 10 NY AM internal gaps:")
-print(
-    longest_gaps[
-        longest_gaps["session_label"] == "NY AM"
-    ]
-    .sort_values("missing_minutes", ascending=False)
-    .head(10)
-    .to_string(index=False)
-)
-
-
-print("\nWorst 10 London internal gaps:")
-print(
-    longest_gaps[
-        longest_gaps["session_label"] == "London"
-    ]
-    .sort_values("missing_minutes", ascending=False)
-    .head(10)
-    .to_string(index=False)
-)
-
 summary = (
     quality
     .groupby("session_label")
@@ -168,28 +118,3 @@ summary = (
         ),
     )
 )
-
-print("\nQuality summary:")
-print(summary)
-
-summary = (
-    quality
-    .groupby("session_label")
-    .agg(
-        complete_sessions=(
-            "completeness_ratio",
-            lambda x: (x == 1).sum()
-        ),
-        incomplete_sessions=(
-            "completeness_ratio",
-            lambda x: (x < 1).sum()
-        ),
-        max_missing_run=(
-            "longest_missing_run",
-            "max"
-        ),
-    )
-)
-
-print("\nQuality summary:")
-print(summary)

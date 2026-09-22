@@ -29,7 +29,7 @@ def back_adjust(data, gaps):
 
     return adjusted
 
-
+if __name__ == "__main__":
 nq_adjusted = back_adjust(nq, nq_gaps)
 es_adjusted = back_adjust(es, es_gaps)
 

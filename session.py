@@ -29,6 +29,7 @@ def add_session_label(data):
     data = data.copy()
     local_time = data["ts_et"].dt.time
     asia = (
+        # Asia wraps past midnight, so either side of midnight is included.
         (local_time >= pd.to_datetime(ASIA_START).time()) |
         (local_time < pd.to_datetime(ASIA_END).time())
     )

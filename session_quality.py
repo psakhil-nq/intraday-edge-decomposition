@@ -43,6 +43,8 @@ def build_expected_grid(session_dates):
             expected_minutes = (
                 end_minutes + 1440 - start_minutes
             )
+            # Overnight windows begin on the previous calendar date.
+            start_dates = session_dates - pd.Timedelta(days=1)
             start_dates = session_dates - pd.Timedelta(days=1)
         else:
             expected_minutes = end_minutes - start_minutes
