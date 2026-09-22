@@ -1,32 +1,195 @@
 import pandas as pd
-from session import add_et_timestamp
+
+from session import add_et_timestamp, add_session_date, add_session_label
+from session_quality import build_session_quality
+
 
 DATA_PATH = r"C:\trading-data\project4\NQ-continuous-1m-adjusted.csv"
 
-import pandas as pd
-from session import add_et_timestamp, add_session_date , add_session_label
 
-test = pd.DataFrame({
-    "ts_event": [
-        "2021-11-08 01:00:00+00:00",  # 20:00 Sun ET → ASIA
-        "2021-11-08 04:59:00+00:00",  # 23:59 Sun ET → ASIA
-        "2021-11-08 05:00:00+00:00",  # 00:00 Mon ET → ASIA
-        "2021-11-08 07:00:00+00:00",  # 02:00 Mon ET → LONDON
-        "2021-11-08 09:59:00+00:00",  # 04:59 Mon ET → LONDON
-        "2021-11-08 10:00:00+00:00",  # 05:00 Mon ET → OFF
-        "2021-11-08 14:30:00+00:00",  # 09:30 Mon ET → NY_AM
-        "2021-11-08 16:59:00+00:00",  # 11:59 Mon ET → OFF
-        "2021-11-08 17:00:00+00:00",  # 12:00 Mon ET → NY_LUNCH
-        "2021-11-08 17:59:00+00:00",  # 12:59 Mon ET → NY_LUNCH
-        "2021-11-08 18:00:00+00:00",  # 13:00 Mon ET → OFF
-        "2021-11-08 18:30:00+00:00",  # 13:30 Mon ET → NY_PM
-        "2021-11-08 20:59:00+00:00",  # 15:59 Mon ET → NY_PM
-        "2021-11-08 21:00:00+00:00",  # 16:00 Mon ET → OFF
-    ]
-})
+# Load data
+data = pd.read_csv(
+    DATA_PATH,
+    parse_dates=["ts_event"]
+)
 
-result = add_et_timestamp(test)
+# Run CP1 session pipeline
+result = add_et_timestamp(data)
 result = add_session_date(result)
 result = add_session_label(result)
+quality = build_session_quality(result)
 
-print(result[["ts_et", "session_date", "session_label"]])
+print("\nSession quality:")
+print(quality.head(10).to_string(index=False))
+
+
+# --------------------------------------------------
+# 1. Basic sanity
+# --------------------------------------------------
+
+print("Rows:", len(result))
+print("Unique session dates:", result["session_date"].nunique())
+
+session_dates = result[["session_date"]].drop_duplicates()
+session_dates["year"] = pd.to_datetime(
+    session_dates["session_date"]
+).dt.year
+
+print("\nSessions by year:")
+print(
+    session_dates.groupby("year")
+    .size()
+    .sort_index()
+)
+
+
+# --------------------------------------------------
+# 2. Session-window counts
+# --------------------------------------------------
+
+window_counts = (
+    result.groupby(["session_date", "session_label"])
+    .size()
+    .unstack(fill_value=0)
+)
+
+windows = [
+    "Asia",
+    "London",
+    "NY AM",
+    "NY Lunch",
+    "NY PM"
+]
+
+window_summary = (
+    window_counts[windows]
+    .agg(["min", "median", "max"])
+)
+
+print("\nWindow min / median / max:")
+print(window_summary)
+
+
+# --------------------------------------------------
+# 3. CME maintenance-hour check
+# --------------------------------------------------
+
+halt_counts = (
+    result[
+        (result["ts_et"].dt.time >= pd.to_datetime("17:00").time()) &
+        (result["ts_et"].dt.time < pd.to_datetime("18:00").time())
+    ]
+    .groupby("session_date")
+    .size()
+)
+
+print("\n17:00–18:00 ET bars:")
+print(halt_counts)
+
+
+# --------------------------------------------------
+# 4. NY AM completeness
+# --------------------------------------------------
+
+ny_am_counts = window_counts["NY AM"]
+
+print("\nWorst 10 sessions by NY AM bar count:")
+print(
+    ny_am_counts
+    .sort_values()
+    .head(10)
+)
+
+
+# --------------------------------------------------
+# 5. Consecutive missing-minute gaps
+# --------------------------------------------------
+
+result = result.sort_values(
+    ["session_date", "session_label", "ts_et"]
+)
+
+result["minute_diff"] = (
+    result
+    .groupby(["session_date", "session_label"])["ts_et"]
+    .diff()
+    .dt.total_seconds()
+    .div(60)
+)
+
+result["missing_minutes"] = result["minute_diff"] - 1
+
+
+longest_gaps = (
+    result
+    .groupby(["session_date", "session_label"])["missing_minutes"]
+    .max()
+    .fillna(0)
+    .reset_index()
+)
+
+
+print("\nWorst 10 NY AM internal gaps:")
+print(
+    longest_gaps[
+        longest_gaps["session_label"] == "NY AM"
+    ]
+    .sort_values("missing_minutes", ascending=False)
+    .head(10)
+    .to_string(index=False)
+)
+
+
+print("\nWorst 10 London internal gaps:")
+print(
+    longest_gaps[
+        longest_gaps["session_label"] == "London"
+    ]
+    .sort_values("missing_minutes", ascending=False)
+    .head(10)
+    .to_string(index=False)
+)
+
+summary = (
+    quality
+    .groupby("session_label")
+    .agg(
+        complete_sessions=(
+            "completeness_ratio",
+            lambda x: (x == 1).sum()
+        ),
+        incomplete_sessions=(
+            "completeness_ratio",
+            lambda x: (x < 1).sum()
+        ),
+        max_missing_run=(
+            "longest_missing_run",
+            "max"
+        ),
+    )
+)
+
+print("\nQuality summary:")
+print(summary)
+
+summary = (
+    quality
+    .groupby("session_label")
+    .agg(
+        complete_sessions=(
+            "completeness_ratio",
+            lambda x: (x == 1).sum()
+        ),
+        incomplete_sessions=(
+            "completeness_ratio",
+            lambda x: (x < 1).sum()
+        ),
+        max_missing_run=(
+            "longest_missing_run",
+            "max"
+        ),
+    )
+)
+
+print("\nQuality summary:")
+print(summary)
