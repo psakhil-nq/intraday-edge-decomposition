@@ -6,8 +6,6 @@ This project is not an attempt to publish a profitable strategy. The deliverable
 
 **Data:** Databento `GLBX.MDP3`, `ohlcv-1m`, continuous E-mini Nasdaq-100 (`NQ.n.0`) and E-mini S&P 500 (`ES.n.0`) futures, 2021-09-09 to 2026-09-09.
 
-**Status:** CP0 complete. CP1 in progress (session segmentation and NQ data-quality analysis complete; ES cross-check, eligibility rule and tests pending).
-
 ---
 
 ## CP0 — Futures Roll Handling
@@ -48,8 +46,6 @@ Only Open, High, Low and Close are adjusted. **Volume is not adjusted.**
 
 The original Databento files are treated as immutable raw data. The adjusted dataset is written to a separate file and records the source continuous symbol and the adjustment method. The roll dates and gaps used are recorded in the roll-gap tables.
 
-Raw and adjusted Databento market data are licensed exchange data and are **not** committed to this repository. Only the derived roll-gap tables and data-quality summaries are included.
-
 ---
 
 ## CP1 — Session Segmentation and Data Quality
@@ -68,7 +64,7 @@ All session times are defined in America/New_York (ET) and evaluated after conve
 
 These windows define the session highs and lows the strategy rules depend on, so they are part of the strategy specification. **Locked on 22 September 2026.** They will not be changed after any backtest result is seen.
 
-The CME `session_date` convention assigns the overnight session beginning at 18:00 ET to the following calendar date. The daily 17:00–18:00 ET maintenance break is treated as off-session and contains no bars in the data.
+The CME `session_date` convention assigns the overnight session beginning at 18:00 ET to the following calendar date. The daily 17:00–18:00 ET maintenance break is treated as off-session; NQ has no bars during this time, and ES has exactly one bar at 2023-10-30 17:00 ET, which is labelled Off and excluded from every window.
 
 ### Timestamp Convention
 
@@ -92,7 +88,7 @@ Missing minutes are **not** forward-filled. Filling would create artificial bars
 | London | 1,280 | 13 | 180 minutes |
 | NY AM | 1,290 | 3 | 90 minutes |
 
-Apart from the four exceptions below, every incomplete window is missing at most two minutes, scattered rather than contiguous, which is consistent with minutes in which no trade occurred.
+Apart from the four material exceptions below, incomplete windows contain only short missing runs. These do not independently fail the session eligibility rule defined below.
 
 ### Material Exceptions
 
@@ -100,10 +96,10 @@ Apart from the four exceptions below, every incomplete window is missing at most
 |---|---|---|---|---|
 | 2023-04-07 | Good Friday abbreviated session | Last bar 09:14 ET | NY AM unavailable | [CME advisory](https://www.cmegroup.com/tools-information/holiday-calendar/files/2023-good-friday-advisory.pdf) |
 | 2025-01-09 | National Day of Mourning for former President Jimmy Carter | Last bar 09:29 ET | NY AM unavailable | [CME Group release](https://investor.cmegroup.com/news-releases/news-release-details/cme-group-announces-trading-hours-us-national-day-mourning-honor) |
-| 2025-11-28 | CME Globex outage (data-centre cooling failure) | 645-minute gap; trading resumed 08:30 ET | Asia 103/240 bars, London 0/180; NY AM complete | [CNBC](https://www.cnbc.com/2025/11/28/cme-halts-fx-commodities-futures-trading-after-data-center-issue.html) |
+| 2025-11-28 | CME Globex outage (data-centre cooling failure) | 645-minute gap; trading resumed 08:30 ET | Asia 103/240 bars (NQ),105/240 (ES) London 0/180; NY AM complete | [CNBC](https://www.cnbc.com/2025/11/28/cme-halts-fx-commodities-futures-trading-after-data-center-issue.html) |
 | 2026-04-03 | Good Friday abbreviated session | Last bar 09:14 ET | NY AM unavailable | [CME advisory](https://www.cmegroup.com/tools-information/holiday-calendar/files/2026/2026-good-friday-clearing-advisory.pdf) |
 
-Holiday sessions with an early close (roughly 1,140 bars) close at 13:00–13:15 ET, after NY AM ends, so they do not affect the strategy windows.
+Excluding the 4 exceptions, there are 44 early-close sessions where the last bar occurs at 12:59 or 13:14 ET. On these dates, the London and NY AM sessions remain unaffected, while the NY PM session has no bars.
 
 ### Databento Data-Quality Flags
 
@@ -126,4 +122,60 @@ Databento flags 14 dates as degraded. These are **UTC calendar dates**, not CME 
 | 2026-07-30 | Thu | 2026-07-30, 2026-07-31 |
 | 2026-08-29 | Sat | None (market closed) |
 
-This gives 15 affected session dates. Sessions are flagged, not removed. Only 2025-11-28 coincides with a visible hole in a strategy window; its effect on results will be evaluated separately during validation by running final results both with and without the flagged sessions.
+This gives 15 affected session dates. The session on 2025-11-28 is excluded by the eligibility rule, while the other 14 flagged session dates remain eligible. The effect on results will be evaluated separately during validation by running final results both with and without these 14 remaining flagged sessions.
+
+### Session Eligibility Rule
+
+A session is eligible for strategy testing only when both required strategy windows — London and NY AM — satisfy:
+
+- observed bars > 0
+- longest missing run <= 2 minutes
+
+Asia is monitored for data quality but is not an independent eligibility gate.
+
+This rule was fixed before any strategy backtest results were produced and will not be changed based on backtest outcomes.
+
+Across 1,293 session dates:
+
+- NQ: 1,289 eligible, 4 ineligible
+- ES: 1,289 eligible, 4 ineligible
+- NQ/ES eligibility disagreement: 0
+
+The four ineligible session dates are:
+
+| Session date | Reason |
+|---|---|
+| 2023-04-07 | Good Friday; NY AM unavailable |
+| 2025-01-09 | National Day of Mourning; NY AM unavailable |
+| 2025-11-28 | CME outage; London unavailable |
+| 2026-04-03 | Good Friday; NY AM unavailable |
+
+### CP1 Validation
+
+The session module was validated for:
+
+- automatic ET conversion and DST handling
+- explicit CME session-date assignment
+- strategy-window completeness
+- cross-instrument session coverage
+- session eligibility consistency
+- synthetic missing-data edge cases
+
+DST checks verified the 2022 transitions across four dates: 2022-03-11 (14:30 UTC), 2022-03-14 (13:30 UTC), 2022-11-04 (13:30 UTC), and 2022-11-07 (14:30 UTC). For all four dates, the first bar correctly mapped to a 09:30 ET start with exactly 90 bars.
+
+Both instruments contained 1,293 session dates. No NQ-only or ES-only session dates were found. Session eligibility agreed across all 1,293 dates.
+
+Synthetic CP1F tests passed for:
+1. zero-bar window
+2. missing first 10 minutes
+3. scattered single missing minutes
+
+### Session Levels
+
+Session high and low are computed per session_date for each window from 1-minute highs and lows. A window with no bars returns NaN rather than zero or a filled value, so a missing window can never produce a level.
+
+Validation: three NY AM sessions were drawn with a fixed random seed (42) and compared against TradingView (NQ1!, New York time zone, back-adjustment off) using the raw, unadjusted series. All three matched exactly: 2021-11-22 (H 16767.50 / L 16638.25), 2022-08-03 (H 13173.25 / L 12989.50), 2023-11-27 (H 16051.50 / L 15970.25). Within a contract segment, back-adjustment shifts all prices by a constant, so adjusted levels differ from raw levels only by that constant.
+
+### Cross-Instrument Timestamp Differences
+
+NQ has 1,770,978 bars and ES 1,770,870. The net difference of 108 is made up of 641 NQ-only and 533 ES-only minutes, all of them minutes where one market traded and the other printed no bar. They fall in Off hours (443 / 384), Asia (180 / 120), London (16 / 29) and NY Lunch (2 NQ-only). There are none in NY AM or NY PM. Several of the largest daily differences fall in contract roll weeks.

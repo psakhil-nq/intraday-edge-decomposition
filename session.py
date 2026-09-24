@@ -29,7 +29,7 @@ def add_session_label(data):
     data = data.copy()
     local_time = data["ts_et"].dt.time
     asia = (
-        # Asia wraps past midnight, so either side of midnight is included.
+        # Asia wraps past midnight, so either side of midnight is included,With the end at 00:00, only the 20:00 side ever matches.
         (local_time >= pd.to_datetime(ASIA_START).time()) |
         (local_time < pd.to_datetime(ASIA_END).time())
     )
@@ -56,3 +56,41 @@ def add_session_label(data):
     data.loc[ny_lunch, "session_label"] = "NY Lunch"
     data.loc[ny_pm, "session_label"] = "NY PM"
     return data
+
+def calculate_session_levels(data, window_name):
+    session_dates = (
+        data["session_date"]
+        .dropna()
+        .drop_duplicates()
+        .sort_values()
+    )
+
+    window_data = data[
+        data["session_label"] == window_name
+    ]
+
+    levels = (
+        window_data
+        .groupby("session_date")
+        .agg(
+            session_high=("high", "max"),
+            session_low=("low", "min"),
+        )
+    )
+
+    levels = (
+        levels
+        .reindex(session_dates)
+        .reset_index()
+    )
+
+    levels["session_label"] = window_name
+
+    return levels[
+        [
+            "session_date",
+            "session_label",
+            "session_high",
+            "session_low",
+        ]
+    ]

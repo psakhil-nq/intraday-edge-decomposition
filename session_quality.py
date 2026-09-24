@@ -10,6 +10,8 @@ from config import (
     LONDON_END,
     NY_AM_START,
     NY_AM_END,
+    QUALITY_REQUIRED_WINDOWS,
+    QUALITY_MAX_MISSING_RUN,
 )
 
 
@@ -44,7 +46,6 @@ def build_expected_grid(session_dates):
                 end_minutes + 1440 - start_minutes
             )
             # Overnight windows begin on the previous calendar date.
-            start_dates = session_dates - pd.Timedelta(days=1)
             start_dates = session_dates - pd.Timedelta(days=1)
         else:
             expected_minutes = end_minutes - start_minutes
@@ -223,3 +224,25 @@ def build_session_quality(data, session_dates=None):
     )
 
     return quality
+
+def build_session_eligibility(quality):
+
+    required = quality[
+        quality["session_label"].isin(
+            QUALITY_REQUIRED_WINDOWS
+        )
+    ].copy()
+
+    required["window_ok"] = (
+        (required["observed_bars"] > 0)
+        & (required["longest_missing_run"] <= QUALITY_MAX_MISSING_RUN)
+    )
+
+    eligibility = (
+        required
+        .groupby("session_date", as_index=False)["window_ok"]
+        .all()
+        .rename(columns={"window_ok": "eligible"})
+    )
+
+    return eligibility
